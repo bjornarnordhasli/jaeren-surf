@@ -1,0 +1,55 @@
+# Refreshes the forecast and publishes the dashboard to GitHub Pages.
+# Runs every morning, and on demand: Actions tab -> "Refresh forecast" -> Run workflow
+# (also from the GitHub mobile app).
+name: Refresh forecast
+
+on:
+  schedule:
+    - cron: '30 4 * * *'   # 04:30 UTC = 05:30 Oslo in winter, 06:30 in summer
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}dashboard/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Fetch forecasts and run the surf model
+        env:
+          SURF_UA: jaeren-surf-dashboard/1.0 (+${{ github.server_url }}/${{ github.repository }})
+        run: python refresh.py
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp -r dashboard data _site/
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=dashboard/"><a href="dashboard/">Jæren surf forecast</a>\n' > _site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,5 @@
+__pycache__/
+# pipeline intermediates; refresh.py copies the results the page needs into data/
+pipeline/*.csv
+pipeline/spots.json
+_site/

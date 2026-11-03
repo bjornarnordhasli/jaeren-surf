@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jæren surf forecast</title>
+<style>
+/* Design tokens that the claude.ai dashboard normally provides */
+:root {
+  --font-anthropic-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-anthropic-serif: Georgia, "Times New Roman", serif;
+  --cds-font-size-caption: 12px; --cds-font-size-body: 14px; --cds-font-size-heading: 16px; --cds-font-size-title: 26px;
+  --cds-font-weight-medium: 600;
+  --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 14px; --cds-gap-lg: 22px; --cds-gap-xl: 32px;
+  --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-md: 12px; --cds-pad-lg: 18px;
+  --cds-radius: 8px; --cds-dur-slow: 300ms;
+  --color-bg: #f7f6f2; --color-panel: #ffffff; --color-fg: #1f1e1b; --color-fg-muted: #6b6860; --color-border-line: #e3e0d8;
+  --color-ok: #2e8b57; --color-warn: #d08a1c; --color-bad: #c4423a;
+  --cds-chart-muted: #b9b5ab; --cds-chart-grid: #ece9e2; --cds-chart-axis: #c9c5bb; --cds-chart-reference: #8a867c;
+  --cds-surface-popover: #ffffff; --cds-border: #dcd8cf; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.12); --cds-text-secondary: #6b6860;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1b1a18; --color-panel: #242320; --color-fg: #ecebe6; --color-fg-muted: #a5a29a; --color-border-line: #38362f;
+    --color-ok: #4fbf7f; --color-warn: #e3a440; --color-bad: #e2685f;
+    --cds-chart-muted: #5e5b54; --cds-chart-grid: #302e29; --cds-chart-axis: #4a4740; --cds-chart-reference: #8f8b81;
+    --cds-surface-popover: #2b2a26; --cds-border: #45423b; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.5); --cds-text-secondary: #a5a29a;
+  }
+}
+html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-body); }
+#dash-root { max-width: 1400px; margin: 0 auto; padding: 24px 16px 48px; }
+.dash-skeleton { position: relative; }
+.dash-skeleton:empty::after { content: ""; position: absolute; inset: 8px; border-radius: var(--cds-radius); background: var(--cds-chart-grid); }
+</style>
+<script src="vendor/d3.min.js"></script>
+<script src="dash-shim.js"></script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+.jx { font-family: var(--font-anthropic-sans); display: flex; flex-direction: column; gap: var(--cds-gap-lg); }
+.jx h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; }
+.jx-take { margin: var(--cds-gap-xs) 0 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-body); }
+.jx-take b, .jx-verdict b { color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
+.jx-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; position: relative; }
+.jx-card h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.jx-note { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: var(--cds-gap-xs) 0 var(--cds-gap-md); }
+.jx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--cds-gap-md); }
+.jx-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: var(--cds-gap-md); }
+.jx-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md); }
+.jx-tile .k { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.jx-tile .v { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; margin-top: var(--cds-gap-xs); }
+.jx-tile .v small { font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-body); }
+.jx-tile .s { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin-top: var(--cds-gap-xs); font-variant-numeric: tabular-nums; }
+.jx-chart { position: relative; min-height: 220px; }
+.jx-chart svg { display: block; }
+.jx-overmap { min-height: 420px; }
+.jx-heat { min-height: 260px; }
+.jx-spotmap { min-height: 300px; }
+.jx-strip { min-height: 140px; }
+.jx-time { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cds-gap-sm) var(--cds-gap-md); }
+.jx-time input[type=range] { flex: 1 1 14rem; accent-color: var(--color-fg); }
+.jx-time button { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg); background: transparent; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 4px 10px; cursor: pointer; }
+.jx-time .lbl { font-variant-numeric: tabular-nums; min-width: 11rem; font-size: var(--cds-font-size-body); }
+.jx-time button:disabled { opacity: .4; cursor: default; }
+.jx-range { display: inline-flex; }
+.jx-range button { border-radius: 0; }
+.jx-range button:first-child { border-radius: var(--cds-radius) 0 0 var(--cds-radius); }
+.jx-range button:last-child { border-radius: 0 var(--cds-radius) var(--cds-radius) 0; margin-left: -1px; }
+.jx-range button[aria-pressed=true] { background: var(--color-fg); color: var(--color-bg); border-color: var(--color-fg); }
+.jx-time-note { margin: var(--cds-gap-sm) 0 0; }
+.jx-spothead { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--cds-gap-sm) var(--cds-gap-md); }
+.jx-spothead h2 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); }
+.jx-spothead select { font: inherit; color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 4px 8px; }
+.jx-verdict { font-size: var(--cds-font-size-body); margin: var(--cds-gap-sm) 0 var(--cds-gap-md); color: var(--color-fg-muted); }
+.jx-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 5; display: none; font-variant-numeric: tabular-nums; }
+.jx-tip .d { color: var(--cds-text-secondary); }
+.jx-tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+.jx-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin-top: var(--cds-gap-sm); }
+.jx-legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: var(--c); }
+.jx-legend .dot::before { width: 8px; height: 8px; border-radius: 50%; }
+.jx-legend .dash::before { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+.jx-err { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: inherit; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.jx-err::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+.jx-method { font-size: var(--cds-font-size-body); line-height: 1.5; }
+.jx-method ul { padding-left: 1.2rem; margin: 0; }
+.jx-method li { margin: 0 0 var(--cds-gap-sm); }
+.jx-axis text { fill: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.jx-axis line, .jx-axis path { stroke: var(--cds-chart-axis); }
+.jx-gl line { stroke: var(--cds-chart-grid); }
+.jx-gl path { display: none; }
+.jx-click { cursor: pointer; }
+[data-dash-source-state=empty] { color: transparent; }
+[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+</style>
+
+<div class="jx">
+  <header id="top">
+    <h1>Jæren surf forecast</h1>
+    <p class="jx-take" id="takeaway"><span class="dash-skeleton">—</span></p>
+    <p class="jx-note" id="updated" hidden></p>
+  </header>
+
+  <section class="jx-card" id="when">
+    <div class="jx-time">
+      <button type="button" id="t-prev" aria-label="Previous 3 hours">◀</button>
+      <input type="range" id="t-range" min="0" max="0" step="1" value="0" aria-label="Forecast time">
+      <button type="button" id="t-next" aria-label="Next 3 hours">▶</button>
+      <span class="lbl" id="t-label">—</span>
+      <button type="button" id="t-now">Now</button>
+      <span class="jx-range" role="group" aria-label="Forecast length">
+        <button type="button" id="d-short" aria-pressed="true">2½ days</button>
+        <button type="button" id="d-long" aria-pressed="false">6 days</button>
+      </span>
+    </div>
+    <p class="jx-note jx-time-note" id="ext-note" hidden></p>
+  </section>
+
+  <div class="jx-grid">
+    <section class="jx-card" id="overview-map">
+      <h2>Swell and wind along the coast</h2>
+      <p class="jx-note">Spots coloured by rating at the time picked above. Arrows point where the swell (blue) and wind travel; click a spot to open its forecast.</p>
+      <div class="jx-chart jx-overmap" id="omap" data-source="region spots forecast"></div>
+      <div class="jx-legend" id="omap-legend"></div>
+    </section>
+    <section class="jx-card" id="overview-heat">
+      <h2>All spots, every 3 hours</h2>
+      <p class="jx-note">Rating 0–10 per spot, coloured by rating only. The top band shows daylight (yellow, from actual sunrise and sunset) and dark (grey). Click a cell to open that spot and time.</p>
+      <div class="jx-chart jx-heat" id="heat" data-source="forecast"></div>
+    </section>
+  </div>
+
+  <section class="jx-card" id="spot">
+    <div class="jx-spothead">
+      <h2 id="spot-name">Spot</h2>
+      <select id="spot-pick" aria-label="Surf spot" data-source="spots"></select>
+    </div>
+    <p class="jx-note" id="spot-info"></p>
+    <p class="jx-verdict" id="spot-verdict"></p>
+    <div class="jx-chart jx-strip" id="strip" data-source="forecast"></div>
+    <p class="jx-note" id="sel-label" style="margin-top: var(--cds-gap-md)"></p>
+    <div class="jx-tiles">
+      <div class="jx-tile"><div class="k">Rating</div><div class="v"><span id="v-score" data-source="forecast" data-field="score">—</span><small> / 10</small></div><div class="s" id="v-rating" data-source="forecast" data-field="rating">—</div></div>
+      <div class="jx-tile"><div class="k">Breaker height <span style="opacity:.75">(target 1.5–2 m)</span></div><div class="v"><span id="v-hb" data-source="forecast" data-field="breaker_h">—</span><small> m</small></div><div class="s"><span id="v-btype" data-source="forecast" data-field="breaker_type">—</span>, in <span id="v-db" data-source="forecast" data-field="break_depth">—</span> m of water</div></div>
+      <div class="jx-tile"><div class="k">Swell (offshore)</div><div class="v"><span id="v-sw" data-source="forecast" data-field="swell_h">—</span><small> m</small></div><div class="s"><span id="v-swt" data-source="forecast" data-field="swell_t">—</span> s from <span id="v-swd" data-source="forecast" data-field="wave_from">—</span>° <span id="v-swc"></span></div></div>
+      <div class="jx-tile"><div class="k">Wind sea (offshore)</div><div class="v"><span id="v-ws" data-source="forecast" data-field="windsea_h">—</span><small> m</small></div><div class="s"><span id="v-wst" data-source="forecast" data-field="windsea_t">—</span> s, made by local wind</div></div>
+      <div class="jx-tile"><div class="k">Wind (yr)</div><div class="v"><span id="v-wind" data-source="forecast" data-field="wind_ms">—</span><small> m/s</small></div><div class="s">gust <span id="v-gust" data-source="forecast" data-field="gust_ms">—</span>, from <span id="v-wdir" data-source="forecast" data-field="wind_from">—</span>° <span id="v-wdc"></span>, <span id="v-wrel" data-source="forecast" data-field="wind_rel">—</span></div></div>
+    </div>
+  </section>
+
+  <div class="jx-grid">
+    <section class="jx-card" id="bathy-card">
+      <h2>Bathymetry and where the waves break</h2>
+      <p class="jx-note">Seabed depth around the spot, swell rays bending toward the shore, and where each one breaks at the time picked. The dashed circle is the break; the arrows show the swell and wind arriving at the spot.</p>
+      <div class="jx-chart jx-spotmap" id="smap"></div>
+      <div class="jx-legend" id="smap-legend"></div>
+    </section>
+    <section class="jx-card" id="profile-card">
+      <h2>Cross-shore profile</h2>
+      <p class="jx-note" id="profile-note">Seabed from the spot straight out to sea, with the predicted break position and breaker height.</p>
+      <div class="jx-chart" id="profile" data-source="profile forecast"></div>
+    </section>
+  </div>
+
+  <div class="jx-grid">
+    <section class="jx-card" id="waves-card">
+      <h2>Swell, wind sea and breaker height</h2>
+      <p class="jx-note">Metres. Offshore sea from BarentsWatch (Météo-France after the dashed line in the 6-day view), split into swell and wind sea; breaker height modelled at the spot. Click to pick a time.</p>
+      <div class="jx-chart" id="waves" data-source="forecast"></div>
+      <div class="jx-legend" id="waves-legend"></div>
+    </section>
+    <section class="jx-card" id="wind-card">
+      <h2>Wind at the spot (yr)</h2>
+      <p class="jx-note">Hourly wind and gusts, m/s; dots show offshore, cross-shore or onshore for this spot.</p>
+      <div class="jx-chart" id="wind" data-source="wind"></div>
+      <div class="jx-legend" id="wind-legend"></div>
+    </section>
+  </div>
+
+  <section class="jx-card jx-method" id="method">
+    <h2>How the forecast is made</h2>
+    <p class="jx-note">The same model runs for every spot</p>
+    <ul>
+      <li><b>Waves:</b> BarentsWatch Bølgevarsel (Jæren model): wave height, peak period and direction at a grid point about 5 km out to sea from each spot.</li>
+      <li><b>6-day option:</b> BarentsWatch runs about 2½ days ahead. After that the waves come from Météo-France's MFWAM model (via Open-Meteo) at the nearest model cell, scaled to match BarentsWatch where the two overlap (height, peak period from mean period, direction). It is coarser and further ahead, so treat days 3–6 as a trend rather than a session plan.</li>
+      <li><b>Wind:</b> MET Norway's locationforecast, the forecast behind yr, at each spot.</li>
+      <li><b>Swell vs wind sea:</b> BarentsWatch gives the total sea only, so the local wind sea is estimated from the yr wind (fetch-limited wave growth, open-sea fetch for onshore winds) and the rest is treated as swell.</li>
+      <li><b>Bathymetry:</b> EMODnet Bathymetry DTM (about 60 × 115 m cells). Kartverket's finer depth models don't cover Jæren's inshore waters, so reef and sandbar detail is smoothed out.</li>
+      <li><b>Breaking:</b> linear wave rays refract and shoal over the seabed; a wave breaks where its height exceeds 0.78 × depth. The rating weighs breaker size (full marks for 1.5–2 m breakers, tapering off for smaller and bigger waves), period, wind direction against the spot's own shoreline, swell share, breaker type and how much the wave peels along the depth contours.</li>
+      <li><b>Spot positions</b> are Surfline's; each spot's facing direction comes from the seabed slope around it. Tide is not included (range under half a metre here).</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const N = (v) => (v === '' || v == null ? NaN : Number(v));
+  const TZ = 'Europe/Oslo';
+  const fmtT = (d) => new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ }).format(d);
+  const fmtDay = (d) => new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', timeZone: TZ }).format(d);
+  const fmtHour = (d) => new Intl.DateTimeFormat('en-GB', { hour: '2-digit', timeZone: TZ }).format(d);
+  const fmtHM = (d) => new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ }).format(d);
+  const hourOslo = (d) => Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: TZ }).format(d));
+  const compass = (deg) => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(((+deg % 360) + 360) % 360 / 22.5) % 16];
+  const f1 = d3.format('.1f');
+  const axisStyle = (g) => g.attr('class', 'jx-axis').attr('font-size', null).attr('font-family', null);
+  // sunrise/sunset on Jæren (58.75 N, 5.6 E), standard solar approximation, -0.833° for refraction
+  const sunCache = new Map();
+  const sun = (d) => {
+    const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    if (sunCache.has(day)) return sunCache.get(day);
+    const n = (day - Date.UTC(d.getUTCFullYear(), 0, 0)) / 864e5, rad = Math.PI / 180, lat = 58.75 * rad, lon = 5.6;
+    const decl = 23.44 * rad * Math.sin(2 * Math.PI * (284 + n) / 365);
+    const B = 2 * Math.PI * (n - 81) / 364, eot = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+    const noon = 12 - lon / 15 - eot / 60;
+    const cosH = (Math.sin(-0.833 * rad) - Math.sin(lat) * Math.sin(decl)) / (Math.cos(lat) * Math.cos(decl));
+    const h = Math.acos(Math.max(-1, Math.min(1, cosH))) / rad / 15;
+    const v = [new Date(day + (noon - h) * 3600e3), new Date(day + (noon + h) * 3600e3)];
+    sunCache.set(day, v); return v;
+  };
+  // share of a 3-hour forecast slot (centred on its time) that is between sunrise and sunset
+  const dayFrac = (d) => {
+    const a = d.getTime() - 1.5 * 3600e3, b = d.getTime() + 1.5 * 3600e3; let lit = 0;
+    for (const k of [-1, 0, 1]) { const [r, s2] = sun(new Date(d.getTime() + k * 864e5)); lit += Math.max(0, Math.min(b, s2.getTime()) - Math.max(a, r.getTime())); }
+    return Math.min(1, lit / (b - a));
+  };
+  const daylight = (d) => dayFrac(d) >= 0.5;
+  const sunFill = (f) => (f <= 0 ? 'var(--color-fg)' : 'var(--color-warn)');
+  const sunOpacity = (f) => (f <= 0 ? 0.28 : 0.25 + 0.65 * f);
+  const sunText = (d) => { const f = dayFrac(d); return f >= 1 ? 'Daylight' : f <= 0 ? 'Dark' : Math.round(f * 100) + '% daylight'; };
+
+  // colours: computed once from theme tokens so they can be interpolated
+  const host = $('top');
+  const rgb = (c) => { const p = document.createElement('span'); p.style.color = c; host.appendChild(p); const v = getComputedStyle(p).color; p.remove(); return v; };
+  let C = null;
+  const colors = () => {
+    if (!C) C = { muted: rgb('var(--cds-chart-muted)'), ok: rgb('var(--color-ok)'), warn: rgb('var(--color-warn)'), bad: rgb('var(--color-bad)'), bg: rgb('var(--color-bg)'), fg: rgb('var(--color-fg)'), sea: rgb(dash.colors[0]) };
+    return C;
+  };
+  let SF = null;
+  const scoreFill = (v) => { if (!SF) { const c = colors(); SF = d3.scaleLinear([0, 2, 4.4, 6.5], [d3.interpolateRgb(c.bg, c.muted)(0.45), c.warn, d3.interpolateRgb(c.warn, c.ok)(0.55), c.ok]).interpolate(d3.interpolateRgb).clamp(true); } return SF(v); };
+  const scoreInk = (s) => (s >= 4.4 ? 'var(--color-bg)' : 'var(--color-fg)');
+  const relColor = (r) => (r === 'offshore' ? 'var(--color-ok)' : r === 'cross-shore' ? 'var(--color-warn)' : 'var(--color-bad)');
+
+  function tip(box) {
+    let el = box.querySelector('.jx-tip');
+    if (!el) { el = document.createElement('div'); el.className = 'jx-tip'; box.appendChild(el); }
+    return {
+      show(x, y, title, lines) {
+        el.replaceChildren();
+        const d = document.createElement('div'); d.className = 'd'; d.textContent = title; el.appendChild(d);
+        for (const [c, text] of lines) {
+          const row = document.createElement('div');
+          if (c) { const s = document.createElement('span'); s.className = 'sw'; s.style.background = c; row.appendChild(s); }
+          row.appendChild(document.createTextNode(text)); el.appendChild(row);
+        }
+        el.style.display = 'block';
+        el.style.left = Math.max(0, Math.min(box.clientWidth - el.offsetWidth, x + 12)) + 'px';
+        el.style.top = Math.max(0, y - el.offsetHeight - 8) + 'px';
+      },
+      hide() { el.style.display = 'none'; },
+    };
+  }
+  function placeholder(box, st) {
+    box.replaceChildren();
+    if (st === 'error' || st === 'missing' || st === 'declined') { box.classList.remove('dash-skeleton'); const d = document.createElement('div'); d.className = 'jx-err'; d.textContent = 'Failed to load'; box.appendChild(d); }
+    else box.classList.add('dash-skeleton');
+  }
+  function fresh(box) { box.classList.remove('dash-skeleton'); box.replaceChildren(); }
+  function legend(id, items) {
+    const lg = $(id); lg.replaceChildren();
+    for (const [c, txt, cls] of items) { const s = document.createElement('span'); if (cls) s.className = cls; s.style.setProperty('--c', c); s.textContent = txt; lg.appendChild(s); }
+  }
+  // a row of text labels: keep each inside [2, W-2] and drop any that would touch the one before it
+  const fitRow = (sel, W) => {
+    let right = -Infinity;
+    sel.each(function () {
+      const el = d3.select(this), w = this.getComputedTextLength(), anchor = el.attr('text-anchor') || 'start';
+      let x0 = +el.attr('x') - (anchor === 'middle' ? w / 2 : anchor === 'end' ? w : 0);
+      if (x0 + w > W - 2) x0 = W - 2 - w;
+      if (x0 < 2) x0 = 2;
+      if (x0 < right + 4) { el.remove(); return; }
+      el.attr('text-anchor', 'start').attr('x', x0); right = x0 + w;
+    });
+  };
+  // contour MultiPolygon (grid units) -> SVG path, without d3-geo
+  const ringPath = (geom, fx, fy) => geom.coordinates.map((poly) => poly.map((ring) => 'M' + ring.map(([i, j]) => fx(i).toFixed(1) + ',' + fy(j).toFixed(1)).join('L') + 'Z').join('')).join('');
+  const safe = (id, fn) => { try { fn(); } catch (err) { if (id) { const box = $(id); box.classList.remove('dash-skeleton'); box.replaceChildren(); const d = document.createElement('div'); d.className = 'jx-err'; d.textContent = 'Couldn’t draw this chart'; box.appendChild(d); } setTimeout(() => { throw err; }); } };
+  function arrow(g, x, y, bearingTo, len, color, width) {
+    const th = bearingTo * Math.PI / 180, ux = Math.sin(th), uy = -Math.cos(th);
+    const x0 = x - ux * len / 2, y0 = y - uy * len / 2, x1 = x + ux * len / 2, y1 = y + uy * len / 2;
+    g.append('line').attr('x1', x0).attr('y1', y0).attr('x2', x1).attr('y2', y1).attr('stroke', color).attr('stroke-width', width).attr('stroke-linecap', 'round');
+    const hs = Math.max(4, width * 2.4);
+    g.append('path').attr('d', `M0,${-hs} L${hs * 0.8},${hs * 0.6} L${-hs * 0.8},${hs * 0.6} Z`).attr('transform', `translate(${x1},${y1}) rotate(${bearingTo})`).attr('fill', color);
+  }
+
+  // ---------- state ----------
+  let T = null; // selected time
+  const pickSpot = (id) => { dash.setParams({ spot: id }); };
+  const pickTime = (t) => { T = t; draw(); };
+  $('spot-pick').addEventListener('change', (e) => pickSpot(e.target.value));
+  let times = [];
+  $('t-range').addEventListener('input', (e) => pickTime(times[+e.target.value]));
+  $('t-prev').addEventListener('click', () => { const i = times.indexOf(T); if (i > 0) pickTime(times[i - 1]); });
+  $('t-next').addEventListener('click', () => { const i = times.indexOf(T); if (i < times.length - 1) pickTime(times[i + 1]); });
+  const nowTime = () => { const now = Date.now(); let best = times[0]; for (const t of times) if (new Date(t).getTime() <= now + 90 * 60e3) best = t; return best; };
+  $('t-now').addEventListener('click', () => pickTime(nowTime()));
+  $('d-short').addEventListener('click', () => dash.setParams({ days: '2' }));
+  $('d-long').addEventListener('click', () => dash.setParams({ days: '6' }));
+  let EXT = null; // first time of the Météo-France extension, when it is shown
+  const isExt = (r) => r.wave_source === 'meteofrance';
+  // dashed boundary where the extension starts, on a chart whose x maps a time string or Date
+  const extLine = (svg, xAt, y0, y1) => {
+    if (!EXT) return;
+    const xe = xAt(EXT); if (!isFinite(xe)) return;
+    svg.append('line').attr('x1', xe).attr('x2', xe).attr('y1', y0).attr('y2', y1).attr('stroke', 'var(--color-fg-muted)').attr('stroke-dasharray', '3 3').attr('pointer-events', 'none');
+  };
+
+  function rowsOf() {
+    const f = dash.data('forecast');
+    if (f.status !== 'ok') return null;
+    return f.data.map((r) => ({ ...r, date: new Date(r.time), sc: N(r.score), hb: N(r.breaker_h), hs: N(r.hs_offshore), sw: N(r.swell_h), ws: N(r.windsea_h), near: N(r.bw_nearshore_hs), wfrom: N(r.wave_from), wdir: N(r.wind_from), wms: N(r.wind_ms) }));
+  }
+
+  // ---------- header ----------
+  function drawTake(all, spots) {
+    const take = $('takeaway'); take.replaceChildren();
+    const day = all.filter((r) => daylight(r.date));
+    if (!day.length) return;
+    const best = day.reduce((a, b) => (b.sc > a.sc ? b : a));
+    const add = (s) => take.appendChild(document.createTextNode(s));
+    const mark = (field, text) => { const b = document.createElement('b'); b.dataset.source = 'forecast'; b.dataset.field = field; b.dataset.where = 'spot_id=' + encodeURIComponent(best.spot_id) + '&time=' + encodeURIComponent(best.time); b.textContent = text; take.appendChild(b); };
+    add('Best daylight session: '); mark('spot', best.spot); add(', ' + fmtT(best.date) + ' — '); mark('rating', best.rating); add(' ('); mark('score', best.score); add('/10), about '); mark('breaker_h', best.breaker_h); add(' m breakers with '); mark('wind_ms', best.wind_ms); add(' m/s ' + best.wind_rel + ' wind.');
+  }
+
+  // ---------- overview map ----------
+  function drawOverview(all, spots, sid) {
+    const box = $('omap');
+    const reg = dash.data('region');
+    if (reg.status !== 'ok') { placeholder(box, reg.status); return; }
+    fresh(box);
+    const cells = reg.data.map((d) => ({ lon: N(d.lon), lat: N(d.lat), depth: N(d.depth) }));
+    const lons = [...new Set(cells.map((d) => d.lon))].sort((a, b) => a - b), lats = [...new Set(cells.map((d) => d.lat))].sort((a, b) => b - a);
+    const nx = lons.length, ny = lats.length;
+    const gridv = new Array(nx * ny).fill(10);
+    const li = new Map(lons.map((v, i) => [v, i])), la = new Map(lats.map((v, i) => [v, i]));
+    for (const c of cells) gridv[la.get(c.lat) * nx + li.get(c.lon)] = isFinite(c.depth) ? c.depth : 10;
+    const lon0 = 5.36, lon1 = 5.84, lat0 = 58.50, lat1 = 58.905, k = Math.cos(58.7 * Math.PI / 180);
+    const W = box.clientWidth, H = Math.round(Math.min(Math.max(W * ((lat1 - lat0) / ((lon1 - lon0) * k)), 360), 620));
+    box.style.minHeight = H + 'px';
+    const s = Math.min(W / ((lon1 - lon0) * k), H / (lat1 - lat0));
+    const ox = (W - (lon1 - lon0) * k * s) / 2, oy = (H - (lat1 - lat0) * s) / 2;
+    const px = (lon) => ox + (lon - lon0) * k * s, py = (lat) => oy + (lat1 - lat) * s;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const cid = 'jxc' + Math.random().toString(36).slice(2, 7);
+    svg.append('clipPath').attr('id', cid).append('rect').attr('width', W).attr('height', H).attr('rx', 6);
+    const g = svg.append('g').attr('clip-path', `url(#${cid})`);
+    g.append('rect').attr('width', W).attr('height', H).attr('fill', dash.colors[0]).attr('fill-opacity', 0.16);
+    const dx = lons[1] - lons[0], dy = lats[0] - lats[1];
+    const path = (geom) => ringPath(geom, (i) => px(lons[0] + (i - 0.5) * dx), (j) => py(lats[0] - (j - 0.5) * dy));
+    const deep = d3.contours().size([nx, ny]).thresholds([20, 50])(gridv);
+    g.append('g').selectAll('path').data(deep).join('path').attr('d', path).attr('fill', dash.colors[0]).attr('fill-opacity', 0.16).attr('stroke', dash.colors[0]).attr('stroke-opacity', 0.35).attr('stroke-width', 0.7);
+    const land = d3.contours().size([nx, ny]).thresholds([0.01])(gridv.map((v) => -v));
+    g.append('g').selectAll('path').data(land).join('path').attr('d', path).attr('fill', 'var(--color-panel)').attr('stroke', 'var(--color-fg)').attr('stroke-opacity', 0.5).attr('stroke-width', 0.8);
+    const t = tip(box);
+    const here = all.filter((r) => r.time === T);
+    // offshore swell (mean of spots)
+    if (here.length) {
+      const m = here[0];
+      const ag = svg.append('g');
+      ag.append('circle').attr('cx', 46).attr('cy', 46).attr('r', 36).attr('fill', 'var(--color-panel)').attr('fill-opacity', 0.9).attr('stroke', 'var(--color-border-line)');
+      arrow(ag, 46, 42, (m.wfrom + 180) % 360, 34, dash.colors[0], 3);
+      ag.append('text').attr('x', 46).attr('y', 74).attr('text-anchor', 'middle').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text(f1(m.hs) + ' m · ' + Math.round(N(m.tp)) + ' s');
+    }
+    const byId = new Map(here.map((r) => [r.spot_id, r]));
+    const sg = svg.append('g');
+    const names = [];
+    for (const sp of spots) {
+      const r = byId.get(sp.id); const x = px(N(sp.lon)), y = py(N(sp.lat));
+      const gg = sg.append('g').attr('class', 'jx-click').on('click', () => pickSpot(sp.id));
+      if (r) {
+        arrow(gg, x - 26, y, (r.wfrom + 180) % 360, 10 + Math.min(r.sw, 6) * 4, dash.colors[0], 2.2);
+        arrow(gg, x - 26, y + 22, (r.wdir + 180) % 360, 10 + Math.min(r.wms, 20) * 1.1, relColor(r.wind_rel), 1.8);
+      }
+      if (sp.id === sid) gg.append('circle').attr('cx', x).attr('cy', y).attr('r', 13).attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-width', 2);
+      gg.append('circle').attr('cx', x).attr('cy', y).attr('r', 9).attr('fill', r ? scoreFill(r.sc) : 'var(--cds-chart-muted)').attr('stroke', 'var(--color-panel)').attr('stroke-width', 1.5);
+      if (r) gg.append('text').attr('x', x).attr('y', y + 3.5).attr('text-anchor', 'middle').attr('font-size', '10px').attr('font-weight', 600).attr('fill', scoreInk(r.sc)).attr('pointer-events', 'none').text(Math.round(r.sc));
+      names.push(gg.append('text').attr('x', x + 14).attr('y', y + 4).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').attr('font-weight', sp.id === sid ? 600 : null)
+        .attr('stroke', 'var(--color-panel)').attr('stroke-width', 3).attr('paint-order', 'stroke').attr('pointer-events', 'none').text(sp.name));
+      gg.on('mousemove', (e) => { if (!r) return; const [mx, my] = d3.pointer(e, box); t.show(mx, my, sp.name + ' · ' + fmtT(r.date), [[null, r.rating + ' · ' + r.score + '/10'], [null, 'Breakers ' + r.breaker_h + ' m'], [dash.colors[0], 'Swell ' + r.swell_h + ' m, ' + r.swell_t + ' s from ' + compass(r.wfrom)], [relColor(r.wind_rel), 'Wind ' + r.wind_ms + ' m/s from ' + compass(r.wdir) + ', ' + r.wind_rel]]); })
+        .on('mouseleave', () => t.hide());
+    }
+    // keep spot names inside the map and apart from each other (shift later ones down)
+    for (const n of names) { const bb = n.node().getBBox(); if (bb.x + bb.width > W - 4) n.attr('text-anchor', 'end').attr('x', +n.attr('x') - 28); }
+    const placed = [];
+    for (const n of names.slice().sort((p, q) => p.node().getBBox().y - q.node().getBBox().y)) {
+      for (let k = 0; k < 6; k++) {
+        const bb = n.node().getBBox();
+        const clash = placed.find((p) => bb.x < p.x + p.width + 2 && p.x < bb.x + bb.width + 2 && bb.y < p.y + p.height && p.y < bb.y + bb.height);
+        if (!clash) break;
+        n.attr('y', +n.attr('y') + (clash.y + clash.height - bb.y) + 1);
+      }
+      placed.push(n.node().getBBox());
+    }
+    // scale bar + north
+    const sx = W - 14 - 5 / (111.32 * k) * k * s;
+    svg.append('line').attr('x1', sx).attr('x2', W - 14).attr('y1', H - 14).attr('y2', H - 14).attr('stroke', 'var(--color-fg)').attr('stroke-width', 2);
+    svg.append('text').attr('x', (sx + W - 14) / 2).attr('y', H - 20).attr('text-anchor', 'middle').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text('5 km');
+    svg.append('text').attr('x', W - 12).attr('y', 18).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text('N ↑');
+    legend('omap-legend', [[dash.colors[0], 'Swell (longer = bigger)'], ['var(--color-ok)', 'Wind offshore'], ['var(--color-warn)', 'Cross-shore'], ['var(--color-bad)', 'Onshore'], [scoreFill(6), 'Spot colour: rating (number inside)', 'dot']]);
+  }
+
+  // ---------- heat grid ----------
+  function drawHeat(all, spots, sid) {
+    const box = $('heat'); fresh(box);
+    const W = box.clientWidth, lab = Math.min(150, Math.max(92, W * 0.26)), rowH = 28, m = { t: 18, b: 40 };
+    const H = m.t + spots.length * rowH + m.b;
+    const x = d3.scaleBand(times, [lab, W - 2]).paddingInner(0.08);
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const t = tip(box);
+    svg.append('text').attr('x', 6).attr('y', 11).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text('Daylight');
+    svg.append('g').selectAll('rect').data(times).join('rect').attr('x', (d) => x(d)).attr('width', x.bandwidth()).attr('y', 4).attr('height', 9).attr('rx', 2)
+      .attr('fill', (d) => sunFill(dayFrac(new Date(d)))).attr('fill-opacity', (d) => sunOpacity(dayFrac(new Date(d))))
+      .on('mousemove', (e, d) => { const [mx, my] = d3.pointer(e, box); const [r, s2] = sun(new Date(d)); t.show(mx, my, fmtT(new Date(d)), [[null, sunText(new Date(d))], [null, 'Sunrise ' + fmtHM(r) + ', sunset ' + fmtHM(s2)]]); })
+      .on('mouseleave', () => t.hide());
+    spots.forEach((sp, i) => {
+      const y = m.t + i * rowH;
+      const g = svg.append('g');
+      if (sp.id === sid) g.append('rect').attr('x', 0).attr('y', y + 1).attr('width', W).attr('height', rowH - 2).attr('rx', 4).attr('fill', 'var(--color-fg)').attr('fill-opacity', 0.06);
+      g.append('text').attr('class', 'jx-click').attr('x', 6).attr('y', y + rowH / 2 + 4).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').attr('font-weight', sp.id === sid ? 600 : null)
+        .text(sp.name.length > 16 && W < 520 ? sp.name.slice(0, 14) + '…' : sp.name).on('click', () => pickSpot(sp.id));
+      const rows = all.filter((r) => r.spot_id === sp.id);
+      g.selectAll('rect.c').data(rows).join('rect').attr('class', 'c jx-click')
+        .attr('x', (r) => x(r.time)).attr('width', x.bandwidth()).attr('y', y + 3).attr('height', rowH - 6).attr('rx', 2)
+        .attr('fill', (r) => scoreFill(r.sc)).attr('fill-opacity', (r) => (isExt(r) ? 0.75 : null))
+        .attr('stroke', (r) => (r.time === T ? 'var(--color-fg)' : 'none')).attr('stroke-width', 1.5)
+        .on('click', (e, r) => { T = r.time; pickSpot(sp.id); if (sp.id === sid) draw(); })
+        .on('mousemove', (e, r) => { const [mx, my] = d3.pointer(e, box); t.show(mx, my, sp.name + ' · ' + fmtT(r.date), [[null, r.rating + ' · ' + r.score + '/10'], [null, 'Breakers ' + r.breaker_h + ' m'], [relColor(r.wind_rel), 'Wind ' + r.wind_ms + ' m/s ' + r.wind_rel], [null, sunText(r.date)]].concat(isExt(r) ? [[null, 'Extended forecast (Météo-France waves)']] : [])); })
+        .on('mouseleave', () => t.hide());
+      if (x.bandwidth() >= 15) g.selectAll('text.n').data(rows).join('text').attr('class', 'n').attr('pointer-events', 'none')
+        .attr('x', (r) => x(r.time) + x.bandwidth() / 2).attr('y', y + rowH / 2 + 4).attr('text-anchor', 'middle').attr('font-size', '10px')
+        .attr('fill', (r) => scoreInk(r.sc)).text((r) => Math.round(r.sc));
+    });
+    const step = Math.max(1, Math.ceil(26 / x.step()));
+    const yb = m.t + spots.length * rowH;
+    extLine(svg, (d) => x(d) - x.step() * x.paddingInner() / 2, 2, yb);
+    svg.append('g').selectAll('text').data(times.filter((d, i) => i % step === 0)).join('text').attr('x', (d) => x(d) + x.bandwidth() / 2).attr('y', yb + 13).attr('text-anchor', 'middle')
+      .attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text((d) => fmtHour(new Date(d))).call(fitRow, W);
+    let last = '';
+    svg.append('g').selectAll('text').data(times.filter((d) => { const k = fmtDay(new Date(d)); if (k === last) return false; last = k; return true; })).join('text')
+      .attr('x', (d) => x(d)).attr('y', yb + 30).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text((d) => fmtDay(new Date(d))).call(fitRow, W);
+  }
+
+  // ---------- spot detail ----------
+  function drawStrip(rows) {
+    const box = $('strip'); fresh(box);
+    const W = box.clientWidth, H = 150, m = { t: 6, r: 4, b: 44, l: 26 };
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const x = d3.scaleBand(rows.map((r) => r.time), [m.l, W - m.r]).padding(0.16);
+    const y = d3.scaleLinear([0, 10], [H - m.b, m.t]);
+    svg.append('g').attr('class', 'jx-gl').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(2).tickSize(-(W - m.l - m.r)).tickFormat(''));
+    svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(2).tickSize(0).tickPadding(6)).call(axisStyle).select('.domain').remove();
+    const t = tip(box);
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('class', 'jx-click')
+      .attr('x', (d) => x(d.time)).attr('width', x.bandwidth()).attr('y', (d) => y(Math.max(d.sc, 0.15))).attr('height', (d) => y(0) - y(Math.max(d.sc, 0.15))).attr('rx', 3)
+      .attr('fill', (d) => scoreFill(d.sc)).attr('fill-opacity', (d) => (isExt(d) ? 0.75 : null))
+      .attr('stroke', (d) => (d.time === T ? 'var(--color-fg)' : 'none')).attr('stroke-width', 2)
+      .on('click', (e, d) => pickTime(d.time))
+      .on('mousemove', (e, d) => { const [mx, my] = d3.pointer(e, box); t.show(mx, my, fmtT(d.date), [[null, d.rating + ' · ' + d.score + '/10'], [null, 'Breakers ' + d.breaker_h + ' m'], [relColor(d.wind_rel), 'Wind ' + d.wind_ms + ' m/s ' + d.wind_rel], [null, sunText(d.date)]]); })
+      .on('mouseleave', () => t.hide());
+    svg.append('g').selectAll('rect.sun').data(rows).join('rect').attr('class', 'sun').attr('x', (d) => x(d.time)).attr('width', x.bandwidth()).attr('y', H - m.b + 3).attr('height', 6).attr('rx', 2)
+      .attr('fill', (d) => sunFill(dayFrac(d.date))).attr('fill-opacity', (d) => sunOpacity(dayFrac(d.date)));
+    extLine(svg, (d) => x(d) - x.step() * x.paddingInner() / 2, m.t, H - m.b + 9);
+    const step = Math.max(1, Math.ceil(26 / x.step()));
+    svg.append('g').selectAll('text').data(rows.filter((d, i) => i % step === 0)).join('text').attr('x', (d) => x(d.time) + x.bandwidth() / 2).attr('y', H - m.b + 24).attr('text-anchor', 'middle')
+      .attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text((d) => fmtHour(d.date)).call(fitRow, W);
+    let last = '';
+    svg.append('g').selectAll('text').data(rows.filter((d) => { const k = fmtDay(d.date); if (k === last) return false; last = k; return true; })).join('text')
+      .attr('x', (d) => x(d.time)).attr('y', H - 3).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text((d) => fmtDay(d.date)).call(fitRow, W);
+  }
+
+  function drawTiles(r) {
+    $('sel-label').textContent = 'Conditions for ' + fmtT(r.date) + ' (Oslo time)' + (isExt(r) ? ' · extended forecast, waves from Météo-France' : '');
+    const where = 'spot_id=' + encodeURIComponent(r.spot_id) + '&time=' + encodeURIComponent(r.time);
+    const set = (id, text) => { const el = $(id); el.dataset.where = where; el.textContent = text === '' || text == null ? '—' : text; };
+    set('v-score', r.score); set('v-rating', r.rating); set('v-hb', r.breaker_h); set('v-btype', r.breaker_type); set('v-db', r.break_depth);
+    set('v-sw', r.swell_h); set('v-swt', r.swell_t); set('v-swd', r.wave_from); $('v-swc').textContent = '(' + compass(r.wfrom) + ')';
+    set('v-ws', r.windsea_h); set('v-wst', r.windsea_t);
+    set('v-wind', r.wind_ms); set('v-gust', r.gust_ms); set('v-wdir', r.wind_from); $('v-wdc').textContent = '(' + compass(r.wdir) + ')'; set('v-wrel', r.wind_rel);
+  }
+
+  function drawSpotMap(sp, r) {
+    const box = $('smap');
+    const id = 'spatial_' + sp.id;
+    box.dataset.source = id + ' forecast';
+    const s = dash.data(id);
+    if (s.status !== 'ok') { placeholder(box, s.status); return; }
+    fresh(box);
+    const cells = [], rays = [], brks = [];
+    for (const d of s.data) {
+      if (d.kind === 'cell') cells.push({ x: N(d.x), y: N(d.y), depth: N(d.depth) });
+      else if (d.time === r.time) { if (d.kind === 'ray') rays.push(d); else if (d.kind === 'break') brks.push({ x: N(d.x), y: N(d.y), hb: N(d.hb), z: N(d.in_zone) === 1 }); }
+    }
+    const xs = [...new Set(cells.map((d) => d.x))].sort((a, b) => a - b), ys = [...new Set(cells.map((d) => d.y))].sort((a, b) => a - b);
+    const cw = d3.median(d3.pairs(xs, (a, b) => b - a)), ch = d3.median(d3.pairs(ys, (a, b) => b - a));
+    const X0 = -3500, X1 = 3500, Y0 = -3000, Y1 = 3000;
+    const W = box.clientWidth, H = Math.round(W * (Y1 - Y0) / (X1 - X0));
+    box.style.minHeight = H + 'px';
+    const x = d3.scaleLinear([X0, X1], [0, W]), y = d3.scaleLinear([Y0, Y1], [H, 0]);
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const cid = 'jxs' + Math.random().toString(36).slice(2, 7);
+    svg.append('clipPath').attr('id', cid).append('rect').attr('width', W).attr('height', H).attr('rx', 6);
+    const g = svg.append('g').attr('clip-path', `url(#${cid})`);
+    const c = colors(); const ramp = d3.scaleSqrt([0, 40], [0.08, 1]).clamp(true);
+    const fill = (dp) => (dp <= 0.3 ? 'var(--cds-chart-muted)' : d3.interpolateRgb(c.bg, c.sea)(ramp(dp)));
+    g.append('g').selectAll('rect').data(cells.filter((d) => d.x >= X0 - cw && d.x <= X1 + cw && d.y >= Y0 - ch && d.y <= Y1 + ch)).join('rect')
+      .attr('x', (d) => x(d.x - cw / 2)).attr('y', (d) => y(d.y + ch / 2)).attr('width', x(cw) - x(0) + 0.6).attr('height', y(0) - y(ch) + 0.6).attr('fill', (d) => fill(d.depth));
+    const nx = xs.length, ny = ys.length, grid = new Array(nx * ny).fill(-5);
+    const xi = new Map(xs.map((v, i) => [v, i])), yi = new Map(ys.map((v, i) => [v, i]));
+    for (const d of cells) grid[(ny - 1 - yi.get(d.y)) * nx + xi.get(d.x)] = isFinite(d.depth) ? d.depth : -5;
+    const cpath = (geom) => ringPath(geom, (i) => x(xs[0] + (i - 0.5) * cw), (j) => y(ys[ny - 1] - (j - 0.5) * ch));
+    g.append('g').selectAll('path').data(d3.contours().size([nx, ny]).thresholds([2, 5, 10, 20])(grid)).join('path').attr('d', cpath).attr('fill', 'none')
+      .attr('stroke', 'var(--color-fg)').attr('stroke-opacity', (d) => (d.value === 2 ? 0.5 : 0.22)).attr('stroke-width', 0.8);
+    const line = d3.line().x((d) => x(N(d.x))).y((d) => y(N(d.y)));
+    g.append('g').selectAll('path').data(d3.groups(rays, (d) => d.ray)).join('path').attr('d', ([, p]) => line(p.sort((a, b) => N(a.seq) - N(b.seq))))
+      .attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-opacity', 0.35).attr('stroke-width', 0.8);
+    const rr = d3.scaleSqrt([0, Math.max(1, d3.max(brks, (d) => d.hb) || 1)], [1, 4.5]);
+    const t = tip(box);
+    g.append('g').selectAll('circle').data(brks).join('circle').attr('cx', (d) => x(d.x)).attr('cy', (d) => y(d.y)).attr('r', (d) => rr(d.hb))
+      .attr('fill', (d) => (d.z ? dash.colors[1] : dash.colors[2])).attr('fill-opacity', (d) => (d.z ? 0.95 : 0.6))
+      .on('mousemove', (e, d) => { const [mx, my] = d3.pointer(e, box); t.show(mx, my, d.z ? 'Breaking at the spot' : 'Breaking nearby', [[null, 'Breaker height ' + f1(d.hb) + ' m'], [null, Math.round(Math.hypot(d.x, d.y)) + ' m from the spot']]); })
+      .on('mouseleave', () => t.hide());
+    g.append('circle').attr('cx', x(0)).attr('cy', y(0)).attr('r', x(450) - x(0)).attr('fill', 'none').attr('stroke', dash.colors[1]).attr('stroke-dasharray', '4 3').attr('stroke-width', 1.2);
+    // swell and wind arrive at the spot: each arrow runs in from the direction it comes from and ends at the dot
+    const cx0 = x(0), cy0 = y(0);
+    const incoming = (fromDeg, len, color, width, label) => {
+      const th = fromDeg * Math.PI / 180, ux = Math.sin(th), uy = -Math.cos(th); // unit vector toward the source
+      const x1 = cx0 + ux * 8, y1 = cy0 + uy * 8, x0 = cx0 + ux * (8 + len), y0 = cy0 + uy * (8 + len);
+      const ga = g.append('g').attr('pointer-events', 'none');
+      ga.append('line').attr('x1', x0).attr('y1', y0).attr('x2', x1).attr('y2', y1).attr('stroke', 'var(--color-panel)').attr('stroke-width', width + 3).attr('stroke-linecap', 'round');
+      ga.append('line').attr('x1', x0).attr('y1', y0).attr('x2', x1).attr('y2', y1).attr('stroke', color).attr('stroke-width', width).attr('stroke-linecap', 'round');
+      const hs = Math.max(5, width * 2.6);
+      ga.append('path').attr('d', `M0,${-hs} L${hs * 0.8},${hs * 0.7} L${-hs * 0.8},${hs * 0.7} Z`).attr('transform', `translate(${x1},${y1}) rotate(${(fromDeg + 180) % 360})`)
+        .attr('fill', color).attr('stroke', 'var(--color-panel)').attr('stroke-width', 1);
+      const tx = ga.append('text').attr('x', x0 + ux * 6).attr('y', y0 + uy * 6 + 4).attr('text-anchor', ux > 0.3 ? 'start' : ux < -0.3 ? 'end' : 'middle')
+        .attr('font-size', 'var(--cds-font-size-caption)').attr('font-weight', 600).attr('fill', color)
+        .attr('stroke', 'var(--color-panel)').attr('stroke-width', 3).attr('paint-order', 'stroke').text(label);
+      const bb = tx.node().getBBox();
+      if (bb.x < 2) tx.attr('text-anchor', 'start').attr('x', 2);
+      else if (bb.x + bb.width > W - 2) tx.attr('text-anchor', 'end').attr('x', W - 2);
+      if (bb.y < 2) tx.attr('y', 2 + bb.height - 3); else if (bb.y + bb.height > H - 24) tx.attr('y', H - 26);
+      return tx;
+    };
+    const span = Math.min(W, H);
+    const swLab = incoming(r.wfrom, span * (0.2 + Math.min(r.sw, 5) * 0.03), dash.colors[0], 3, 'Swell ' + r.swell_h + ' m · ' + r.swell_t + ' s from ' + compass(r.wfrom));
+    const wiLab = incoming(r.wdir, span * (0.14 + Math.min(r.wms, 20) * 0.006), relColor(r.wind_rel), 2.2, 'Wind ' + r.wind_ms + ' m/s from ' + compass(r.wdir) + ' (' + r.wind_rel + ')');
+    // keep the two arrow labels apart: nudge the wind label up or down until the boxes don't touch
+    const hit = (a, b) => a.x < b.x + b.width + 4 && b.x < a.x + a.width + 4 && a.y < b.y + b.height + 2 && b.y < a.y + a.height + 2;
+    for (let k = 0; k < 2 && hit(swLab.node().getBBox(), wiLab.node().getBBox()); k++) {
+      const a = swLab.node().getBBox(), b = wiLab.node().getBBox();
+      const down = b.y + b.height / 2 >= a.y + a.height / 2;
+      const y0 = +wiLab.attr('y'), yDown = y0 + (a.y + a.height - b.y) + 3, yUp = y0 - (b.y + b.height - a.y) - 3;
+      const fits = (yy) => yy <= H - 26 && yy - b.height >= 2;
+      let ny = down ? (fits(yDown) ? yDown : yUp) : (fits(yUp) ? yUp : yDown);
+      wiLab.attr('y', Math.max(b.height, Math.min(H - 26, ny)));
+    }
+    for (const lab of [swLab, wiLab]) { const bb = lab.node().getBBox(); if (bb.x < 2) lab.attr('x', +lab.attr('x') + (2 - bb.x)); else if (bb.x + bb.width > W - 2) lab.attr('x', +lab.attr('x') - (bb.x + bb.width - W + 2)); }
+    g.append('circle').attr('cx', cx0).attr('cy', cy0).attr('r', 5).attr('fill', 'var(--color-fg)').attr('stroke', 'var(--color-panel)').attr('stroke-width', 1.5);
+    svg.append('text').attr('x', W - 10).attr('y', 18).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text('N ↑');
+    const sx = W - 12 - (x(1000) - x(0));
+    svg.append('line').attr('x1', sx).attr('x2', W - 12).attr('y1', H - 12).attr('y2', H - 12).attr('stroke', 'var(--color-fg)').attr('stroke-width', 2);
+    svg.append('text').attr('x', (sx + W - 12) / 2).attr('y', H - 18).attr('text-anchor', 'middle').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text('1 km');
+    legend('smap-legend', [[dash.colors[1], 'Breaking at the spot', 'dot'], [dash.colors[2], 'Breaking nearby', 'dot'], ['var(--color-fg)', 'Swell rays'], [dash.colors[0], 'Swell arriving at the spot'], [relColor(r.wind_rel), 'Wind arriving at the spot'], ['var(--cds-chart-muted)', 'Land', 'dot'], [c.sea, 'Deeper water; lines at 2, 5, 10, 20 m', 'dot']]);
+  }
+
+  function drawProfile(sp, r) {
+    const box = $('profile');
+    const p = dash.data('profile');
+    if (p.status !== 'ok') { placeholder(box, p.status); return; }
+    fresh(box);
+    $('profile-note').textContent = 'Seabed from the spot straight out to sea (toward ' + compass(sp.facing) + '), with the predicted break position and breaker height.';
+    const pts = p.data.filter((d) => d.spot_id === sp.id).map((d) => ({ dist: N(d.dist), z: -N(d.depth) })).filter((d) => d.dist <= 1500);
+    const W = box.clientWidth, H = 240, m = { t: 16, r: 12, b: 30, l: 42 };
+    const hb = isFinite(r.hb) ? r.hb : 0;
+    const x = d3.scaleLinear([1500, 0], [m.l, W - m.r]);
+    const y = d3.scaleLinear([Math.min(-12, d3.min(pts, (d) => d.z)), Math.max(4, hb + 1.2)], [H - m.b, m.t]);
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    svg.append('g').attr('class', 'jx-gl').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickSize(-(W - m.l - m.r)).tickFormat(''));
+    svg.append('rect').attr('x', m.l).attr('width', W - m.l - m.r).attr('y', y(0)).attr('height', y.range()[0] - y(0)).attr('fill', dash.colors[0]).attr('fill-opacity', 0.12);
+    svg.append('path').datum(pts).attr('d', d3.area().x((d) => x(d.dist)).y0(H - m.b).y1((d) => y(d.z))).attr('fill', 'var(--cds-chart-muted)');
+    svg.append('path').datum(pts).attr('d', d3.line().x((d) => x(d.dist)).y((d) => y(d.z))).attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-width', 1.5);
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', dash.colors[0]).attr('stroke-width', 1.5);
+    svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(W / 90))).tickFormat((v) => v + ' m')).call(axisStyle);
+    svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickFormat((v) => v + ' m')).call(axisStyle).select('.domain').remove();
+    const bd = N(r.break_dist);
+    if (isFinite(bd) && hb > 0) {
+      const bx = x(Math.min(bd, 1500)), w = Math.max(14, x(0) - x(60));
+      svg.append('line').attr('x1', bx).attr('x2', bx).attr('y1', y(-N(r.break_depth))).attr('y2', y(hb)).attr('stroke', dash.colors[1]).attr('stroke-width', 2).attr('stroke-dasharray', '4 3');
+      const c = d3.path();
+      c.moveTo(bx - w * 1.6, y(0)); c.quadraticCurveTo(bx - w * 0.6, y(0), bx - w * 0.2, y(hb * 0.8)); c.quadraticCurveTo(bx, y(hb * 1.05), bx + w * 0.55, y(hb * 0.75)); c.quadraticCurveTo(bx + w * 0.2, y(hb * 0.55), bx + w * 0.25, y(0));
+      svg.append('path').attr('d', c.toString()).attr('fill', dash.colors[1]).attr('fill-opacity', 0.75);
+      const tx = svg.append('text').attr('y', y(hb) - 6).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text(r.breaker_h + ' m breaking ~' + Math.round(bd) + ' m out, ' + r.break_depth + ' m deep');
+      const tw = tx.node().getComputedTextLength(); tx.attr('x', Math.max(m.l, Math.min(W - m.r - tw, bx - tw / 2)));
+    } else {
+      svg.append('text').attr('x', (m.l + W) / 2).attr('y', m.t + 10).attr('text-anchor', 'middle').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text('No swell reaches the spot at this time');
+    }
+    svg.append('text').attr('x', m.l + 4).attr('y', H - m.b - 6).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text('← sea');
+    svg.append('text').attr('x', W - m.r - 4).attr('y', H - m.b - 6).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text('shore →');
+  }
+
+  function lineChart(box, rows, series, opts) {
+    fresh(box);
+    const W = box.clientWidth, H = 220, m = { t: 10, r: 12, b: 26, l: 30 };
+    const x = d3.scaleUtc(d3.extent(rows, (d) => d.date), [m.l, W - m.r]);
+    const y = d3.scaleLinear([0, (d3.max(series, (s) => d3.max(rows, (d) => s.v(d))) || 1) * 1.08], [H - m.b, m.t]).nice();
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    svg.append('g').attr('class', 'jx-gl').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(-(W - m.l - m.r)).tickFormat(''));
+    svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(W / 110))).tickFormat((d) => fmtDay(d))).call(axisStyle);
+    svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4)).call(axisStyle).select('.domain').remove();
+    if (opts.ext) extLine(svg, (d) => { const xe = x(new Date(d)); return xe >= m.l && xe <= W - m.r ? xe : NaN; }, m.t, H - m.b);
+    if (T) { const xt = x(new Date(T)); if (xt >= m.l && xt <= W - m.r) svg.append('line').attr('x1', xt).attr('x2', xt).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)'); }
+    for (const s of series) {
+      svg.append('path').datum(rows.filter((d) => isFinite(s.v(d)))).attr('d', d3.line().x((d) => x(d.date)).y((d) => y(s.v(d))))
+        .attr('fill', 'none').attr('stroke', s.c).attr('stroke-width', s.w || 2).attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round').attr('stroke-dasharray', s.dash || null);
+    }
+    if (opts.dots) svg.append('g').selectAll('circle').data(rows).join('circle').attr('cx', (d) => x(d.date)).attr('cy', (d) => y(opts.dots.v(d))).attr('r', 2.6).attr('fill', (d) => opts.dots.c(d));
+    const t = tip(box);
+    const hover = svg.append('circle').attr('r', 4).attr('fill', series[0].c).style('display', 'none');
+    const nearest = (e) => { const dt = x.invert(d3.pointer(e)[0]); return rows[d3.minIndex(rows, (r) => Math.abs(r.date - dt))]; };
+    svg.append('rect').attr('x', m.l).attr('y', m.t).attr('width', W - m.l - m.r).attr('height', H - m.t - m.b).attr('fill', 'transparent').attr('class', opts.click ? 'jx-click' : null)
+      .on('mousemove', (e) => {
+        const [mx, my] = d3.pointer(e, box); const d = nearest(e);
+        hover.style('display', null).attr('cx', x(d.date)).attr('cy', y(series[0].v(d)));
+        t.show(mx, my, fmtT(d.date), series.filter((s) => isFinite(s.v(d))).map((s) => [s.c, s.name + ': ' + f1(s.v(d)) + s.unit]).concat(opts.extra ? [opts.extra(d)] : []));
+      })
+      .on('mouseleave', () => { t.hide(); hover.style('display', 'none'); })
+      .on('click', (e) => { if (opts.click) opts.click(nearest(e)); });
+  }
+
+  function draw() {
+    const sp = dash.data('spots');
+    const raw = rowsOf();
+    const mt = dash.data('meta'), upd = $('updated');
+    upd.hidden = !(mt.status === 'ok' && mt.data && mt.data.refreshed_at);
+    if (!upd.hidden) upd.textContent = 'Forecast updated ' + fmtT(new Date(mt.data.refreshed_at)) + ' (Oslo time)';
+    const p = dash.params();
+    const hasExt = !!raw && raw.some(isExt);
+    const long = hasExt && p.days === '6';
+    $('d-long').disabled = !hasExt;
+    $('d-long').title = hasExt ? '' : 'No extended data yet: run refresh.py';
+    $('d-short').setAttribute('aria-pressed', String(!long)); $('d-long').setAttribute('aria-pressed', String(long));
+    const all = raw && (long ? raw : raw.filter((r) => !isExt(r)));
+    EXT = long ? raw.filter(isExt).map((r) => r.time).sort()[0] : null;
+    const note = $('ext-note'); note.hidden = !EXT;
+    if (EXT) note.textContent = 'From ' + fmtT(new Date(EXT)) + ' (dashed line, faded cells) the waves come from Météo-France\'s coarser model, scaled to BarentsWatch: read it as a trend, not a session plan.';
+    if (sp.status !== 'ok' || !all) {
+      const st = sp.status !== 'ok' ? sp.status : dash.data('forecast').status;
+      for (const id of ['omap', 'heat', 'strip', 'smap', 'profile', 'waves']) placeholder($(id), st);
+      return;
+    }
+    const spots = sp.data;
+    const byId = new Map(spots.map((s) => [s.id, s]));
+    const sid = byId.has(p.spot) ? p.spot : (byId.has('point_perfect') ? 'point_perfect' : spots[0].id);
+    const spot = byId.get(sid);
+    times = [...new Set(all.map((r) => r.time))].sort();
+    if (!T || !times.includes(T)) T = nowTime();
+    const ti = times.indexOf(T);
+    const range = $('t-range'); range.max = String(times.length - 1); range.value = String(ti);
+    $('t-label').textContent = fmtT(new Date(T));
+    $('t-prev').disabled = ti <= 0; $('t-next').disabled = ti >= times.length - 1;
+
+    drawTake(all, spots);
+    safe('omap', () => drawOverview(all, spots, sid));
+    safe('heat', () => drawHeat(all, spots, sid));
+
+    const pick = $('spot-pick');
+    pick.replaceChildren(...spots.map((s) => new Option(s.name, s.id))); pick.value = sid;
+    $('spot-name').textContent = spot.name;
+    $('spot-info').textContent = spot.kind + ' · ' + spot.level + ' · faces ' + compass(spot.facing) + ' (offshore wind from ' + compass(spot.offshore_wind_from) + '). ' + spot.note;
+    const rows = all.filter((r) => r.spot_id === sid);
+    const r = rows.find((d) => d.time === T) || rows[0];
+    const day = rows.filter((d) => daylight(d.date));
+    const best = (day.length ? day : rows).reduce((a, b) => (b.sc > a.sc ? b : a));
+    const v = $('spot-verdict'); v.replaceChildren();
+    const b = document.createElement('b'); b.dataset.source = 'forecast'; b.dataset.field = 'rating'; b.dataset.where = 'spot_id=' + encodeURIComponent(sid) + '&time=' + encodeURIComponent(best.time); b.textContent = best.rating;
+    v.append(document.createTextNode('Best daylight window here: ' + fmtT(best.date) + ', '), b, document.createTextNode(' (' + best.score + '/10, ' + best.breaker_h + ' m breakers, ' + best.wind_ms + ' m/s ' + best.wind_rel + ').'));
+    safe('strip', () => drawStrip(rows));
+    safe(null, () => drawTiles(r));
+    safe('smap', () => drawSpotMap(spot, r));
+    safe('profile', () => drawProfile(spot, r));
+    const ser = [
+      { name: 'Breaker height', v: (d) => d.hb, c: dash.colors[1], unit: ' m' },
+      { name: 'Swell', v: (d) => d.sw, c: dash.colors[0], unit: ' m' },
+      { name: 'Wind sea', v: (d) => d.ws, c: dash.colors[3], unit: ' m' },
+      { name: 'Offshore total', v: (d) => d.hs, c: 'var(--cds-chart-muted)', unit: ' m' },
+      { name: 'BarentsWatch nearshore', v: (d) => d.near, c: dash.colors[2], dash: '4 3', w: 1.5, unit: ' m' },
+    ];
+    safe('waves', () => lineChart($('waves'), rows, ser, { click: (d) => pickTime(d.time), ext: true }));
+    legend('waves-legend', ser.map((s) => [s.c, s.name, s.dash ? 'dash' : '']));
+    const w = dash.data('wind');
+    if (w.status !== 'ok') placeholder($('wind'), w.status);
+    else {
+      const wEnd = new Date(times[times.length - 1]).getTime() + 3 * 3600e3;
+      const wr = w.data.filter((d) => d.spot_id === sid && new Date(d.time).getTime() <= wEnd).map((d) => ({ ...d, date: new Date(d.time), sp: N(d.wind_speed), gu: N(d.wind_gust) }));
+      safe('wind', () => lineChart($('wind'), wr, [{ name: 'Wind', v: (d) => d.sp, c: dash.colors[0], unit: ' m/s' }, { name: 'Gust', v: (d) => d.gu, c: 'var(--cds-chart-muted)', dash: '4 3', w: 1.5, unit: ' m/s' }],
+        { dots: { v: (d) => d.sp, c: (d) => relColor(d.wind_rel) }, extra: (d) => [relColor(d.wind_rel), 'From ' + d.wind_dir + '° (' + compass(d.wind_dir) + '), ' + d.wind_rel] }));
+      legend('wind-legend', [[dash.colors[0], 'Wind'], ['var(--cds-chart-muted)', 'Gust', 'dash'], ['var(--color-ok)', 'Offshore', 'dot'], ['var(--color-warn)', 'Cross-shore', 'dot'], ['var(--color-bad)', 'Onshore', 'dot']]);
+    }
+  }
+  for (const id of ['omap', 'heat', 'strip', 'smap', 'profile', 'waves', 'wind']) $(id).classList.add('dash-skeleton');
+  dash.onData(draw);
+})();
+</script>
+
+</div>
+</body>
+</html>
