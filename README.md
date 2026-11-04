@@ -33,7 +33,9 @@ every push to `main`, and on demand, then publishes `dashboard/` and `data/` to 
 | `pipeline/fetch.py` | Downloads BarentsWatch Bølgevarsel wave tiles (public vector tiles), MET Norway locationforecast (yr) wind and Météo-France MFWAM waves from Open-Meteo (for the 6-day view) |
 | `pipeline/model2.py` | The surf model: wave rays over bathymetry, shoaling, breaking (H > 0.78 h), rating |
 | `pipeline/run2.py` | Runs the model for every spot and writes the output files; spot list is at the top |
-| `pipeline/grids.json` | EMODnet bathymetry crops around each spot |
+| `pipeline/grids_kartverket.json` | Bathymetry the model uses: Kartverket chart depths gridded per spot (built by `build_grids_kartverket.py`) |
+| `pipeline/grids_emodnet.json` | EMODnet bathymetry crops around each spot: the cell layout, land heights and fallback depths |
+| `pipeline/build_grids_kartverket.py` | Downloads Kartverket "Dybdedata" (Sola, Klepp, Hå) from Geonorge and builds `grids_kartverket.json`; run it again only when adding a spot |
 | `pipeline/browser_fetch.js`, `split_fallback.py` | Fallback fetch through a browser tab, for machines that can't reach the APIs directly |
 | `refresh.py` | Runs fetch + model and copies results into `data/` |
 
@@ -46,8 +48,13 @@ every push to `main`, and on demand, then publishes `dashboard/` and `data/` to 
   still runs and the 6-day option stays off.
 - **Wind:** MET Norway locationforecast 2.0 at each spot (the forecast behind yr).
 - **Swell vs wind sea:** wind sea estimated from yr wind (JONSWAP fetch-limited growth); the rest is swell.
-- **Transformation:** linear-wave ray tracing over EMODnet bathymetry (~60 × 115 m cells), refraction,
+- **Bathymetry:** Kartverket nautical-chart depths ("Dybdedata", © Kartverket, CC BY 4.0: soundings,
+  shoals, contours, coastline) interpolated onto the EMODnet cells (~60 × 115 m); EMODnet fills cells
+  more than 600 m from any charted depth. Depths are below chart datum. Compared with EMODnet alone the
+  chart data is 1–2.5 m deeper within ~500 m of the beaches, so waves break closer in and slightly bigger.
+- **Transformation:** linear-wave ray tracing over that bathymetry, refraction,
   shoaling and ray-spacing; a ray breaks where H > 0.78 × depth. Breaks within 450 m of the spot count.
 - **Rating 0–10:** breaker size (full marks for 1.5–2 m), period, wind vs the spot's shoreline,
   swell share, breaker type (Iribarren) and peel angle.
-- Not included: tide; reef-scale bathymetry (Kartverket's fine grids don't cover inshore Jæren).
+- Not included: tide; reef-scale bathymetry (Kartverket's modern multibeam surveys off Sola and
+  Hellestø are classified, and elsewhere the inshore soundings are from 1979–85).

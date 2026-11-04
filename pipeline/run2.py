@@ -12,7 +12,7 @@ SPOTS = [  # id, name, lat, lon (Surfline), facing hint, kind, level, note
     ('refsnes', 'Refsnes', 58.6915, 5.5486, 240, 'Beach break', 'All levels', 'Open beach just south of Point Perfect.'),
     ('brusand', 'Brusand', 58.5300, 5.7632, 225, 'Beach break', 'All levels', 'Long southern beach; north-west wind blows more from the side here.'),
 ]
-grids = {k: dict(v, elev=np.array(v['elev'], dtype=float)) for k, v in json.load(open('grids.json')).items()}
+grids = {k: dict(v, elev=np.array(v['elev'], dtype=float)) for k, v in json.load(open('grids_kartverket.json')).items()}
 bw = pd.read_csv('bw_all.csv'); bw['time'] = pd.to_datetime(bw.time)
 yr = pd.read_csv('yr_all.csv'); yr['time'] = pd.to_datetime(yr.time)
 pts = bw.drop_duplicates(['lat', 'lon'])[['lat', 'lon']].values

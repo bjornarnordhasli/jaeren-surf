@@ -1,6 +1,6 @@
 """Tailored surf forecast for Jæren spots (generalised from the Point Perfect model).
 
-Per spot: EMODnet bathymetry crop -> ray tracing (refraction + shoaling) of BarentsWatch swell
+Per spot: bathymetry crop (Kartverket chart depths over EMODnet) -> ray tracing (refraction + shoaling) of BarentsWatch swell
 and a yr-wind-derived wind sea -> depth-limited breaking -> breaker height/depth/peel -> score.
 """
 import numpy as np

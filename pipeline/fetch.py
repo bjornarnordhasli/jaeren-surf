@@ -5,7 +5,7 @@ locationforecast wind per spot) and om_all.csv (Météo-France MFWAM waves via O
 extend the forecast past BarentsWatch's ~60 h). Needs HTTPS access to www.barentswatch.no, api.met.no and
 marine-api.open-meteo.com.
 """
-import math, os, struct, sys, datetime as dt, urllib.request, json, csv, concurrent.futures as cf
+import math, os, struct, sys, time, datetime as dt, urllib.request, json, csv, concurrent.futures as cf
 
 # MET Norway asks for an identifying User-Agent with contact info; the GitHub workflow sets SURF_UA to the repo URL
 UA = os.environ.get('SURF_UA') or 'jaeren-surf-dashboard/1.0 (personal surf forecast)'
@@ -112,7 +112,17 @@ def fetch_bw(hours=72):
 def fetch_yr():
     rows = []
     for sid, (la, lo) in SPOTS.items():
-        j = json.loads(get(f'https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={la}&lon={lo}'))
+        # api.met.no sometimes serves a truncated (cached) body or a 5xx for one exact URL; retry, then
+        # ask for the point rounded to 3 decimals (~50 m away), which is a separate cache entry
+        tries = [(la, lo)]*2 + [(round(la, 3), round(lo, 3))]*3 + [(round(la, 2), round(lo, 2))]
+        for k, (qa, qo) in enumerate(tries):
+            try:
+                j = json.loads(get(f'https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={qa}&lon={qo}'))
+                break
+            except (ValueError, OSError) as e:
+                print(f'yr {sid} ({qa}, {qo}) failed: {str(e)[:80]}', flush=True)
+                if k == len(tries) - 1: raise
+                time.sleep(10)
         up = j['properties']['meta']['updated_at']
         for s in j['properties']['timeseries'][:90]:
             d = s['data']['instant']['details']
