@@ -109,20 +109,30 @@ def fetch_bw(hours=72):
     return len(rows), len({r[0] for r in rows})
 
 
+def _yr_one(sid, la, lo):
+    # api.met.no sometimes serves a truncated (cached) body or a 5xx for one exact URL; retry, then
+    # ask for the point rounded to 3 decimals (~50 m away), which is a separate cache entry
+    tries = [(la, lo)]*2 + [(round(la, 3), round(lo, 3))]*3 + [(round(la, 2), round(lo, 2))]
+    for k, (qa, qo) in enumerate(tries):
+        try:
+            return json.loads(get(f'https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={qa}&lon={qo}'))
+        except (ValueError, OSError) as e:
+            print(f'yr {sid} ({qa}, {qo}) failed: {str(e)[:80]}', flush=True)
+            if k == len(tries) - 1: return None
+            time.sleep(10)
+
+
 def fetch_yr():
+    got = {sid: _yr_one(sid, la, lo) for sid, (la, lo) in SPOTS.items()}
+    if not any(got.values()): raise RuntimeError('MET locationforecast failed for every spot')
     rows = []
     for sid, (la, lo) in SPOTS.items():
-        # api.met.no sometimes serves a truncated (cached) body or a 5xx for one exact URL; retry, then
-        # ask for the point rounded to 3 decimals (~50 m away), which is a separate cache entry
-        tries = [(la, lo)]*2 + [(round(la, 3), round(lo, 3))]*3 + [(round(la, 2), round(lo, 2))]
-        for k, (qa, qo) in enumerate(tries):
-            try:
-                j = json.loads(get(f'https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={qa}&lon={qo}'))
-                break
-            except (ValueError, OSError) as e:
-                print(f'yr {sid} ({qa}, {qo}) failed: {str(e)[:80]}', flush=True)
-                if k == len(tries) - 1: raise
-                time.sleep(10)
+        src = sid
+        if got[sid] is None:
+            # spots are 1-5 km apart, about one MET model cell (2.5 km): borrow the nearest spot's wind
+            src = min((s for s in SPOTS if got[s]), key=lambda s: (SPOTS[s][0]-la)**2 + ((SPOTS[s][1]-lo)*0.52)**2)
+            print(f'yr {sid}: using wind from {src}', flush=True)
+        j = got[src]
         up = j['properties']['meta']['updated_at']
         for s in j['properties']['timeseries'][:90]:
             d = s['data']['instant']['details']

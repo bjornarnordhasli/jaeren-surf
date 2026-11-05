@@ -39,7 +39,8 @@ jobs:
       - name: Fetch forecasts and run the surf model
         env:
           SURF_UA: jaeren-surf-dashboard/1.0 (+${{ github.server_url }}/${{ github.repository }})
-        run: python refresh.py
+        # MET and BarentsWatch have short outages; if the first try fails, wait 15 min and try once more
+        run: python refresh.py || { echo "Refresh failed, retrying in 15 minutes"; sleep 900; python refresh.py; }
 
       - name: Assemble site
         run: |

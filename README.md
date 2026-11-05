@@ -19,7 +19,7 @@ The page must be served over http (opening `index.html` directly from disk block
 every push to `main`, and on demand, then publishes `dashboard/` and `data/` to GitHub Pages at
 `https://<user>.github.io/<repo>/`. To refresh from a phone: GitHub app → the repo → Actions →
 "Refresh forecast" → Run workflow; the page shows "Forecast updated …" when the new data is live
-(about 10 minutes). One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+(about 10 minutes). If a run fails it waits 15 minutes and tries once more. One-time setup: repo Settings → Pages → Source: "GitHub Actions".
 `data/` already contains the forecast from 28 Oct 2026, so the page works before the first refresh.
 
 ## Layout
@@ -46,7 +46,8 @@ every push to `main`, and on demand, then publishes `dashboard/` and `data/` to 
   (Open-Meteo marine API, nearest model cell), scaled to BarentsWatch over the hours both cover; those
   rows have `wave_source=meteofrance` in `forecast.csv`. If Open-Meteo can't be reached, the refresh
   still runs and the 6-day option stays off.
-- **Wind:** MET Norway locationforecast 2.0 at each spot (the forecast behind yr).
+- **Wind:** MET Norway locationforecast 2.0 at each spot (the forecast behind yr). If MET fails for a spot
+  after retries, that spot uses the nearest spot's wind; the refresh only stops if every spot fails.
 - **Swell vs wind sea:** wind sea estimated from yr wind (JONSWAP fetch-limited growth); the rest is swell.
 - **Bathymetry:** Kartverket nautical-chart depths ("Dybdedata", © Kartverket, CC BY 4.0: soundings,
   shoals, contours, coastline) interpolated onto the EMODnet cells (~60 × 115 m); EMODnet fills cells
