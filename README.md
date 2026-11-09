@@ -56,6 +56,11 @@ every push to `main`, and on demand, then publishes `dashboard/` and `data/` to 
 - **Transformation:** linear-wave ray tracing over that bathymetry, refraction,
   shoaling and ray-spacing; a ray breaks where H > 0.78 × depth. Breaks within 450 m of the spot count.
 - **Rating 0–10:** breaker size (full marks for 1.5–2 m), period, wind vs the spot's shoreline,
-  swell share, breaker type (Iribarren) and peel angle.
+  swell share, breaker type (Iribarren), peel angle and swell window.
+- **Swell window** (`SWELL_WINDOW` in `run2.py`): the swell directions each spot works best on. Full
+  marks inside, fading over 30° to a floor of 30% of the score. Revtangen splits the coast: Sola to Reve
+  are open to W–NW and sheltered from S; Point Perfect, Refsnes and Brusand are open to SW–S, and NW swell
+  reaches them along the coast at a grazing angle. Point Perfect's window (190–255°) is set from surfing
+  experience; the others come from where the mainland coastline (Kartverket) blocks open sea.
 - Not included: tide; reef-scale bathymetry (Kartverket's modern multibeam surveys off Sola and
   Hellestø are classified, and elsewhere the inshore soundings are from 1979–85).

@@ -186,7 +186,8 @@ html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); fon
       <li><b>Wind:</b> MET Norway's locationforecast, the forecast behind yr, at each spot.</li>
       <li><b>Swell vs wind sea:</b> BarentsWatch gives the total sea only, so the local wind sea is estimated from the yr wind (fetch-limited wave growth, open-sea fetch for onshore winds) and the rest is treated as swell.</li>
       <li><b>Bathymetry:</b> Kartverket's nautical-chart depths (soundings, shoals, depth contours and coastline; <a href="https://kartkatalog.geonorge.no/metadata/2751aacf-5472-4850-a208-3532a51c529a">Dybdedata</a>, © Kartverket, CC BY 4.0), gridded onto about 60 × 115 m cells, with EMODnet Bathymetry DTM filling the few cells far from any charted depth. Depths are below chart datum (lowest tide). Most inshore soundings off Jæren are from 1979–85; Kartverket's modern multibeam surveys here are not public, so reef and sandbar detail is smoothed out.</li>
-      <li><b>Breaking:</b> linear wave rays refract and shoal over the seabed; a wave breaks where its height exceeds 0.78 × depth. The rating weighs breaker size (full marks for 1.5–2 m breakers, tapering off for smaller and bigger waves), period, wind direction against the spot's own shoreline, swell share, breaker type and how much the wave peels along the depth contours.</li>
+      <li><b>Breaking:</b> linear wave rays refract and shoal over the seabed; a wave breaks where its height exceeds 0.78 × depth. The rating weighs breaker size (full marks for 1.5–2 m breakers, tapering off for smaller and bigger waves), period, wind direction against the spot's own shoreline, swell share, breaker type, how much the wave peels along the depth contours, and whether the swell comes from inside the spot's swell window.</li>
+      <li><b>Swell windows:</b> Revtangen splits the coast. Sola, Hellestø, Sele, Bore and Reve face open sea to the west and north-west and are sheltered from the south. Point Perfect, Refsnes and Brusand lie south-east of Revtangen: north-west swell reaches them along the coast at a grazing angle and breaks poorly, so they score best on south-west to south swell (at Point Perfect this matches local experience). Swell from outside a spot's window lowers its rating to as little as 30%. The windows come from where the mainland coast blocks open sea (Kartverket coastline), with Point Perfect set from surfing experience.</li>
       <li><b>Spot positions</b> are Surfline's; each spot's facing direction comes from the seabed slope around it. Tide is not included (range under half a metre here).</li>
     </ul>
   </section>
@@ -485,7 +486,8 @@ html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); fon
     const where = 'spot_id=' + encodeURIComponent(r.spot_id) + '&time=' + encodeURIComponent(r.time);
     const set = (id, text) => { const el = $(id); el.dataset.where = where; el.textContent = text === '' || text == null ? '—' : text; };
     set('v-score', r.score); set('v-rating', r.rating); set('v-hb', r.breaker_h); set('v-btype', r.breaker_type); set('v-db', r.break_depth);
-    set('v-sw', r.swell_h); set('v-swt', r.swell_t); set('v-swd', r.wave_from); $('v-swc').textContent = '(' + compass(r.wfrom) + ')';
+    set('v-sw', r.swell_h); set('v-swt', r.swell_t); set('v-swd', r.wave_from); const fit = N(r.swell_fit);
+    $('v-swc').textContent = '(' + compass(r.wfrom) + (r.swell_fit == null || r.swell_fit === '' ? '' : fit >= 1 ? ', in the spot\'s swell window' : fit > 0 ? ', edge of the swell window' : ', outside the swell window') + ')';
     set('v-ws', r.windsea_h); set('v-wst', r.windsea_t);
     set('v-wind', r.wind_ms); set('v-gust', r.gust_ms); set('v-wdir', r.wind_from); $('v-wdc').textContent = '(' + compass(r.wdir) + ')'; set('v-wrel', r.wind_rel);
   }

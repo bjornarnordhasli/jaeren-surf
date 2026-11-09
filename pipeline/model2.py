@@ -116,7 +116,18 @@ class Spot:
         return float(max(np.hypot(self.gx[jy, jx], self.gy[jy, jx]), 0.005))
 
 
-def score_parts(hb, T, wind, rel, clean, irb, peel):
+def swell_fit(dfrom, window, fade=30.0):
+    """1 when the swell comes from inside the spot's window (lo, hi in degrees from, clockwise), fading
+    linearly to 0 over `fade` degrees outside it."""
+    lo, hi = window
+    width = (hi - lo) % 360
+    off = (dfrom - lo) % 360
+    if off <= width: return 1.0
+    out = min(off - width, 360 - off)   # degrees past hi, or before lo
+    return float(max(0.0, 1 - out/fade))
+
+
+def score_parts(hb, T, wind, rel, clean, irb, peel, fit=1.0):
     # breaker size: target 1.5-2.0 m (full marks), tapering to 0 at 0.3 m and to ~0.05 by 4 m
     HB_LO, HB_HI = 1.5, 2.0
     if hb < 0.3: s_size = 0.0
@@ -133,8 +144,9 @@ def score_parts(hb, T, wind, rel, clean, irb, peel):
     elif peel < 8: s_peel = 0.45
     elif peel <= 50: s_peel = 1.0
     else: s_peel = max(0.4, 1-(peel-50)/60)
-    total = 10*s_size*s_wind*(0.4+0.6*s_per)*(0.6+0.4*clean)*s_brk*(0.5+0.5*s_peel)
-    return dict(s_size=s_size, s_period=s_per, s_wind=s_wind, s_clean=clean, s_breaker=s_brk, s_peel=s_peel, score=round(float(total), 1))
+    s_dir = 0.3 + 0.7*fit   # swell from outside the spot's window: at most 30% of the score
+    total = 10*s_size*s_wind*(0.4+0.6*s_per)*(0.6+0.4*clean)*s_brk*(0.5+0.5*s_peel)*s_dir
+    return dict(s_size=s_size, s_period=s_per, s_wind=s_wind, s_clean=clean, s_breaker=s_brk, s_peel=s_peel, s_dir=s_dir, score=round(float(total), 1))
 
 
 def label(sc, hb):

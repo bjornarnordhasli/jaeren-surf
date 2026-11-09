@@ -8,10 +8,17 @@ SPOTS = [  # id, name, lat, lon (Surfline), facing hint, kind, level, note
     ('sele', 'Sele', 58.8121, 5.5448, 280, 'Beach break', 'All levels', 'Quieter beach between Hellestø and Bore.'),
     ('bore', 'Bore', 58.7993, 5.5452, 270, 'Beach break', 'All levels', 'Usually the biggest of the northern beaches; works on all tides.'),
     ('reve', 'Reve havn', 58.7726, 5.5166, 240, 'Beach by harbour wall', 'Intermediate', 'Beside the harbour wall near Revtangen; smaller than the open beaches.'),
-    ('point_perfect', 'Point Perfect (Orre)', 58.6969, 5.5382, 230, 'Reef / point', 'Intermediate and up', 'Point break at Orre; peels into the bay to its south.'),
+    ('point_perfect', 'Point Perfect (Orre)', 58.6969, 5.5382, 230, 'Reef / point', 'Intermediate and up', 'Point break at Orre; best on south-west to south swell, north-west swell breaks poorly.'),
     ('refsnes', 'Refsnes', 58.6915, 5.5486, 240, 'Beach break', 'All levels', 'Open beach just south of Point Perfect.'),
     ('brusand', 'Brusand', 58.5300, 5.7632, 225, 'Beach break', 'All levels', 'Long southern beach; north-west wind blows more from the side here.'),
 ]
+# Swell window per spot: swell directions (from, degrees, clockwise lo -> hi) that get full marks; the score
+# fades over 30 degrees outside it to 30%. Revtangen splits the coast: the spots north of it are open to W-NW
+# and sheltered from S; those south-east of it are open to SW-S, and NW swell runs along their coast at a
+# grazing angle. Point Perfect is set from surfing experience (NW swell breaks poorly there, S is better); the
+# others from where the mainland coastline (Kartverket) blocks open sea.
+SWELL_WINDOW = {'sola': (260, 330), 'hellesto': (230, 320), 'sele': (230, 315), 'bore': (235, 325),
+                'reve': (240, 340), 'point_perfect': (190, 255), 'refsnes': (200, 270), 'brusand': (180, 260)}
 grids = {k: dict(v, elev=np.array(v['elev'], dtype=float)) for k, v in json.load(open('grids_kartverket.json')).items()}
 bw = pd.read_csv('bw_all.csv'); bw['time'] = pd.to_datetime(bw.time)
 yr = pd.read_csv('yr_all.csv'); yr['time'] = pd.to_datetime(yr.time)
@@ -96,7 +103,8 @@ def run(spec):
         btype = 'spilling' if irb < 0.4 else ('plunging' if irb <= 2 else 'surging')
         clean = Hsw**2/max(Hs**2, 1e-6)
         rel = sp.rel_wind(wdir)
-        sc = score_parts(hb, Tsw, U, rel, clean, irb, peel)
+        fit = swell_fit(dfrom, SWELL_WINDOW[sid])
+        sc = score_parts(hb, Tsw, U, rel, clean, irb, peel, fit)
         wrel = 'offshore' if rel < 60 else ('cross-shore' if rel < 120 else 'onshore')
         bdist = float(PD[np.argmax(PZ >= db)]) if np.isfinite(db) and (PZ >= db).any() else None
         T = ISO(t)
@@ -106,7 +114,7 @@ def run(spec):
                          breaker_h=round(hb, 2), break_depth=round(db, 1) if np.isfinite(db) else None,
                          break_x=round(bx) if np.isfinite(bx) else None, break_y=round(by) if np.isfinite(by) else None,
                          break_dist=bdist, peel_angle=round(peel) if np.isfinite(peel) else None,
-                         iribarren=round(irb, 2), breaker_type=btype,
+                         iribarren=round(irb, 2), breaker_type=btype, swell_fit=round(fit, 2),
                          bw_nearshore_hs=float(nr.loc[t].hs) if nr is not None and t in nr.index else None,
                          score=sc['score'], rating=label(sc['score'], hb), wave_source=r.wave_source))
         for i in np.where(ok)[0][::4]:
@@ -128,7 +136,7 @@ def run(spec):
                  wind_rel=('offshore' if sp.rel_wind(r.wind_dir) < 60 else ('cross-shore' if sp.rel_wind(r.wind_dir) < 120 else 'onshore')))
             for r in wsel.itertuples()]
     meta = dict(id=sid, name=name, lat=lat, lon=lon, kind=kind, level=level, note=note,
-                facing=round(sp.seaward), bathy_facing=round(sp.bathy_bearing), offshore_wind_from=round(sp.offshore_wind_from),
+                swell_window=list(SWELL_WINDOW[sid]), facing=round(sp.seaward), bathy_facing=round(sp.bathy_bearing), offshore_wind_from=round(sp.offshore_wind_from),
                 bw_lat=float(ola), bw_lon=float(olo), bw_depth=round(oh, 1),
                 bw_near_lat=float(near[1]) if near else None, bw_near_lon=float(near[2]) if near else None)
     print(sid, meta['facing'], meta['bathy_facing'], hint, (ola, olo, round(oh)), 'scores', [r['score'] for r in rows], flush=True)
