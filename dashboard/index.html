@@ -366,13 +366,18 @@ html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); fon
     g.append('g').selectAll('path').data(land).join('path').attr('d', path).attr('fill', 'var(--color-panel)').attr('stroke', 'var(--color-fg)').attr('stroke-opacity', 0.5).attr('stroke-width', 0.8);
     const t = tip(box);
     const here = all.filter((r) => r.time === T);
-    // offshore swell (mean of spots)
-    if (here.length) {
-      const m = here[0];
+    // offshore swell along the coast: median height and period over the spots' offshore points, direction
+    // averaged as vectors weighted by height (Sola's point is sheltered and would understate both)
+    const ok = here.filter((r) => isFinite(r.hs) && isFinite(r.wfrom));
+    if (ok.length) {
+      const hs = d3.median(ok, (r) => r.hs), tp = d3.median(ok, (r) => N(r.tp));
+      const sx = d3.sum(ok, (r) => r.hs * Math.sin(r.wfrom * Math.PI / 180)), cy = d3.sum(ok, (r) => r.hs * Math.cos(r.wfrom * Math.PI / 180));
+      const from = (Math.atan2(sx, cy) * 180 / Math.PI + 360) % 360;
       const ag = svg.append('g');
+      ag.append('title').text('Offshore waves: ' + f1(hs) + ' m, ' + Math.round(tp) + ' s, from ' + compass(from) + ' (' + Math.round(from) + '°)');
       ag.append('circle').attr('cx', 46).attr('cy', 46).attr('r', 36).attr('fill', 'var(--color-panel)').attr('fill-opacity', 0.9).attr('stroke', 'var(--color-border-line)');
-      arrow(ag, 46, 42, (m.wfrom + 180) % 360, 34, dash.colors[0], 3);
-      ag.append('text').attr('x', 46).attr('y', 74).attr('text-anchor', 'middle').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text(f1(m.hs) + ' m · ' + Math.round(N(m.tp)) + ' s');
+      arrow(ag, 46, 42, (from + 180) % 360, 14 + Math.min(hs, 8) * 5, dash.colors[0], 3);
+      ag.append('text').attr('x', 46).attr('y', 74).attr('text-anchor', 'middle').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg)').text(f1(hs) + ' m · ' + Math.round(tp) + ' s');
     }
     const byId = new Map(here.map((r) => [r.spot_id, r]));
     const sg = svg.append('g');
