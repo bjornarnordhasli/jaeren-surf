@@ -31,7 +31,10 @@ ISO = lambda t: t.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 def extend(off, ola, olo):
     """Continue the BarentsWatch series at (ola, olo) with MFWAM from the nearest Open-Meteo cell, out to EXT_HOURS.
-    MFWAM gives mean period and its own height/direction bias, so scale it to BarentsWatch over the overlap."""
+    MFWAM gives mean period and its own height/direction bias, so scale it to BarentsWatch over the overlap.
+    Only hours that are swell in both count: near the coast BarentsWatch can report short offshore-wind chop
+    (2-3 s, from land) while MFWAM's coarser cell further out sees the open-sea waves, and calibrating one to
+    the other then rotates and shrinks the whole extension."""
     off = off[['hs', 'tp', 'dir_to']].assign(wave_source='barentswatch')
     if om.empty: return off
     cells = om.drop_duplicates(['lat', 'lon'])
@@ -39,12 +42,14 @@ def extend(off, ola, olo):
     c = cells.iloc[int(np.argmin(d.values))]
     m = om[(om.lat == c.lat) & (om.lon == c.lon)].drop_duplicates('time').set_index('time').sort_index()
     t = off.index.intersection(m.index)
-    if len(t) >= 4:
-        b, f = off.loc[t], m.loc[t]
+    b, f = off.loc[t], m.loc[t]
+    dd = ((b.dir_to.values + 180) - f.dir_from.values + 540) % 360 - 180
+    ok = (b.tp.values >= 5) & (f.tm.values >= 4) & (np.abs(dd) <= 60)
+    if ok.sum() >= 4:
+        b, f, dd = b[ok], f[ok], np.radians(dd[ok])
         kh = float(np.clip(np.median(b.hs.values/np.maximum(f.hs.values, 0.05)), 0.6, 1.6))
         kt = float(np.clip(np.median(b.tp.values/np.maximum(f.tm.values, 1.0)), 1.0, 1.6))  # peak / mean period
-        dd = np.radians(((b.dir_to.values + 180) - f.dir_from.values + 540) % 360 - 180)
-        ddir = float(np.degrees(np.arctan2(np.mean(np.sin(dd)), np.mean(np.cos(dd)))))
+        ddir = float(np.clip(np.degrees(np.arctan2(np.mean(np.sin(dd)), np.mean(np.cos(dd)))), -25, 25))
     else:
         kh, kt, ddir = 1.0, 1.2, 0.0
     end = off.index.min() + pd.Timedelta(hours=EXT_HOURS)
